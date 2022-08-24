@@ -1,0 +1,32 @@
+{
+  "editor.formatOnSave": true,
+  "editor.insertSpaces": true,
+  "files.insertFinalNewline": true,
+  "files.trimFinalNewlines": true,
+  "files.trimTrailingWhitespace": true,
+  "editor.rulers": [100],
+
+  "python.linting.enabled": true,
+  "python.linting.pylintEnabled": true,
+  "python.linting.pylintArgs": ["--generate-members"],
+  "python.formatting.provider": "autopep8",
+  "python.formatting.autopep8Args": [
+    "--max-line-length",
+    "100",
+    "--experimental"
+  ],
+  "python.languageServer": "Pylance",
+  "autoDocstring.docstringFormat": "numpy",
+
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.python"
+  },
+
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+
+  "[jsonc]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  }
+}

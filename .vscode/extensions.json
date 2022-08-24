@@ -1,0 +1,13 @@
+{
+  "recommendations": [
+    "ms-python.python",
+    "ms-toolsai.jupyter",
+    "ms-python.vscode-pylance",
+    "kevinrose.vsc-python-indent",
+    "oderwat.indent-rainbow",
+    "njpwerner.autodocstring",
+    "esbenp.prettier-vscode",
+    "wayou.vscode-todo-highlight",
+    "DavidAnson.vscode-markdownlint"
+  ]
+}
