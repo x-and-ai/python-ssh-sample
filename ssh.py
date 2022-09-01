@@ -13,26 +13,31 @@ StdinDict = Dict[str, str]
 class Distro(Enum):
     ROCKY = 'Rocky Linux'
     UBUNTU = 'Ubuntu'
+    OPENWRT = 'OpenWRT'
 
 
 @dataclass
 class COMMON_COMMAND_DICTS:
     cmd_prompt_regex_dict = {
+        Distro.OPENWRT: '.*\@.*\:.*(\#|\$)\s$',
         Distro.UBUNTU: '.*\@.*\:.*(\#|\$)\s$',
         Distro.ROCKY: '\[.*\@.*\s.*\](\#|\$)\s$'
     }
 
     apt_update_dict = {
+        # Distro.OPENWRT: 'opkg update',
         Distro.UBUNTU: 'apt update',
         Distro.ROCKY: 'dnf makecache --refresh'
     }
 
     apt_upgrade_dict = {
+        # Distro.OPENWRT: 'opkg list-upgradable | cut -f 1 -d ' ' | xargs opkg upgrade',
         Distro.UBUNTU: 'apt upgrade -y',
         Distro.ROCKY: 'dnf update --all -y'
     }
 
     apt_autoremove_dict = {
+        # Distro.OPENWRT: '',
         Distro.UBUNTU: 'apt autoremove',
         Distro.ROCKY: 'dnf clean all'
     }
@@ -81,13 +86,13 @@ class SSH:
 
     def upload(self, local_file_path: str, remote_file_path: str):
         self.exit(verbose=False)
-        self.__connect(verbose=False, wait=False)
+        self.__connect(verbose=False, wait=True)
         sftp = self.__client.open_sftp()
         print_bold(f'Uploading {local_file_path} to {remote_file_path} ...')
         sftp.put(local_file_path, remote_file_path)
         sftp.close()
-        self.__connect(verbose=False)
         print_bold(f'DONE')
+        self.__connect(verbose=True, wait=True)
 
     def execute(self, command: str, sudo: bool = False, stdin_dict: StdinDict = {}):
         """execute a shell command in this session
@@ -121,7 +126,9 @@ class SSH:
         """
         self.__connect()
 
-    def reboot(self, reconnect: bool = True, sudo: bool = True):
+    def reboot(
+            self, reconnect: bool = True, sudo: bool = True,
+            wait_for_host: Optional[str] = None, wait_for_port: Optional[int] = None):
         """reboot
 
         Parameters
@@ -130,10 +137,14 @@ class SSH:
             should reconnect shell after reboot, by default True
         sudo : bool, optional
             should use sudo, by default False
+        wait_for_host : Optional[str], optional
+            the new host other than current ssh host to wait on, by default None
+        wait_for_port : Optional[int], optional
+            the new port other than current ssh port to wait on, by default None
         """
         self.execute('reboot now')
         self.__disconnect()
-        self.__wait_for_reboot()
+        self.__wait_for_reboot(wait_for_host, wait_for_port)
         if reconnect:
             self.__connect()
 
@@ -162,16 +173,22 @@ class SSH:
         self.exit()
 
     def __connect(self, verbose: bool = True, wait: bool = True):
-        if (self.__channel is None) or (self.__channel.closed):
+        try:
             self.__client.connect(self.__host, self.__port,
                                   username=self.__user, password=self.__password,
                                   key_filename=self.__key_path, passphrase=self.__passphrase,
                                   timeout=self.__timeout)
-            self.__channel = self.__client.invoke_shell()
-            if verbose:
-                print_bold(f'Created SSH shell by user {self.__user} on host {self.__host}')
-            if wait:
-                self.__wait_for_execute()
+        except paramiko.SSHException as e:
+            if not self.__password and not self.__key_path:
+                self.__client.get_transport().auth_none(self.__user)
+            else:
+                raise e
+
+        self.__channel = self.__client.invoke_shell()
+        if verbose:
+            print_bold(f'Created SSH shell by user {self.__user} on host {self.__host}')
+        if wait:
+            self.__wait_for_execute()
 
     def __disconnect(self, verbose: bool = True):
         if self.__channel is not None:
@@ -215,10 +232,13 @@ class SSH:
             if stdinKey in output:
                 self.__channel.send(f"{stdin_dict[stdinKey]}\n".encode())
 
-    def __wait_for_reboot(self):
+    def __wait_for_reboot(
+            self, wait_for_host: Optional[str] = None, wait_for_port: Optional[int] = None):
         print('Waiting for reboot ...')
         is_rebooted = False
+        wait_host = wait_for_host if wait_for_host is not None else self.__host
+        wait_port = wait_for_port if wait_for_port is not None else self.__port
         while not is_rebooted:
             sleep(1)
-            is_rebooted = port_check(self.__host, self.__port)
+            is_rebooted = port_check(wait_host, wait_port)
         print('Rebooted')
