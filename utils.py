@@ -1,4 +1,5 @@
 import socket
+import subprocess
 
 
 def divider(character: str = '=', length: int = 80) -> str:
@@ -31,11 +32,21 @@ def print_bold(content: object):
 
 
 def port_check(host: str, port: int, timeout: float = 5) -> bool:
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.settimeout(timeout)
-    try:
-        s.connect((host, int(port)))
-        s.shutdown(2)
-        return True
-    except:
-        return False
+    code = subprocess.call(f'ssh-keyscan -t ed25519 -p {port} {host}', shell=True,
+                           stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL)
+    return code == 0
+
+
+def clear_known_hosts_for_host(host: str, known_hosts_path: str):
+    with open(known_hosts_path, "r") as f:
+        lines = f.readlines()
+    with open(known_hosts_path, "w") as f:
+        for line in lines:
+            if host not in line:
+                f.write(line)
+
+
+def add_known_hosts_for_host(host: str, port: int, known_hosts_path: str):
+    clear_known_hosts_for_host(host, known_hosts_path)
+    subprocess.call(f'ssh-keyscan -t ed25519 -p {port} {host} >> {known_hosts_path}', shell=True)

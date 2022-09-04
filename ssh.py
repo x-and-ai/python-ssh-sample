@@ -6,6 +6,8 @@ from time import sleep
 from typing import Dict, Optional
 import paramiko
 from utils import port_check, print_bold
+from scp import SCPClient
+from os import path
 
 StdinDict = Dict[str, str]
 
@@ -84,14 +86,22 @@ class SSH:
         self.__channel: Optional[paramiko.Channel] = None
         self.__connect()
 
-    def upload(self, local_file_path: str, remote_file_path: str):
+    def upload(self, local_file_path: str, remote_file_path: str, sftp: bool = False):
         self.exit(verbose=False)
-        self.__connect(verbose=False, wait=True)
-        sftp = self.__client.open_sftp()
-        print_bold(f'Uploading {local_file_path} to {remote_file_path} ...')
-        sftp.put(local_file_path, remote_file_path)
-        sftp.close()
-        print_bold(f'DONE')
+        self.__connect(verbose=False, wait=True, invoke_shell=False)
+        if sftp:
+            sftp = self.__client.open_sftp()
+            print_bold(f'Uploading {local_file_path} to {remote_file_path} ...')
+            sftp.put(local_file_path, remote_file_path)
+            sftp.close()
+            print_bold(f'DONE')
+        else:
+            scp = SCPClient(self.__client.get_transport())
+            print_bold(f'Uploading {local_file_path} to {remote_file_path} ...')
+            scp.put(local_file_path, remote_file_path, recursive=True)
+            scp.close()
+            print_bold(f'DONE')
+
         self.__connect(verbose=True, wait=True)
 
     def execute(self, command: str, sudo: bool = False, stdin_dict: StdinDict = {}):
@@ -146,7 +156,7 @@ class SSH:
         self.__disconnect()
         self.__wait_for_reboot(wait_for_host, wait_for_port)
         if reconnect:
-            self.__connect()
+            self.__connect(keep_trying=True)
 
     def shutdown(self):
         """shutdown and close current shell
@@ -168,27 +178,40 @@ class SSH:
         self.execute(update_command, sudo)
         self.execute(upgrade_command, sudo)
         self.execute(autoremove_command, sudo)
+        # if line.strip("\n") != "nickname_to_delete":
+        #     f.write(line)
+        # subprocess.call(f'mkdir -p {temp_dir_path}', shell=True)
+        # assert path.exists(known_hosts_path)
+        # temp_known_hosts_path = path.join(temp_dir_path, "known_hosts")
+        # subprocess.call(
+        #     f'grep -F -v {host} {temp_dir_path} > {temp_known_hosts_path} && mv {temp_known_hosts_path} {known_hosts_path}',
+        #     shell=True)
 
     def __del__(self):
         self.exit()
 
-    def __connect(self, verbose: bool = True, wait: bool = True):
+    def __connect(self, verbose: bool = True, wait: bool = True, keep_trying: bool = False,
+                  invoke_shell=True):
         try:
             self.__client.connect(self.__host, self.__port,
                                   username=self.__user, password=self.__password,
                                   key_filename=self.__key_path, passphrase=self.__passphrase,
                                   timeout=self.__timeout)
-        except paramiko.SSHException as e:
-            if not self.__password and not self.__key_path:
+        except Exception as e:
+            if isinstance(e, paramiko.SSHException) and not self.__password and not self.__key_path:
                 self.__client.get_transport().auth_none(self.__user)
+            elif keep_trying:
+                sleep(5)
+                self.__connect(verbose, wait, keep_trying, invoke_shell=False)
             else:
                 raise e
 
-        self.__channel = self.__client.invoke_shell()
-        if verbose:
-            print_bold(f'Created SSH shell by user {self.__user} on host {self.__host}')
-        if wait:
-            self.__wait_for_execute()
+        if invoke_shell:
+            self.__channel = self.__client.invoke_shell()
+            if verbose:
+                print_bold(f'Created SSH shell by user {self.__user} on host {self.__host}')
+            if wait:
+                self.__wait_for_execute()
 
     def __disconnect(self, verbose: bool = True):
         if self.__channel is not None:
@@ -239,6 +262,6 @@ class SSH:
         wait_host = wait_for_host if wait_for_host is not None else self.__host
         wait_port = wait_for_port if wait_for_port is not None else self.__port
         while not is_rebooted:
-            sleep(1)
+            sleep(5)
             is_rebooted = port_check(wait_host, wait_port)
         print('Rebooted')
