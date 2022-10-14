@@ -86,7 +86,8 @@ class SSH:
         self.__channel: Optional[paramiko.Channel] = None
         self.__connect()
 
-    def upload(self, local_file_path: str, remote_file_path: str, sftp: bool = False):
+    def upload(self, local_file_path: str, remote_file_path: str, sftp: bool = False,
+               recursive: bool = False):
         self.exit(verbose=False)
         self.__connect(verbose=False, wait=True, invoke_shell=False)
         if sftp:
@@ -98,7 +99,7 @@ class SSH:
         else:
             scp = SCPClient(self.__client.get_transport())
             print_bold(f'Uploading {local_file_path} to {remote_file_path} ...')
-            scp.put(local_file_path, remote_file_path, recursive=True)
+            scp.put(local_file_path, remote_file_path, recursive=recursive)
             scp.close()
             print_bold(f'DONE')
 
